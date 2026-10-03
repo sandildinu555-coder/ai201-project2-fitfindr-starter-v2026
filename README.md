@@ -39,69 +39,46 @@
 
 ## What This Does
 
-<!-- Three or four sentences: what a user asks for, and what they get back. -->
-
-
+FitFindr is an AI agent that acts as a personal shopping assistant for thrifting. A user asks for a specific clothing item with constraints (like size or price), and the agent searches a simulated store database to find a match. It then looks at the user's current wardrobe to suggest how to style the new item and generates a social media-ready caption for the complete outfit.
 
 ---
 
 ## Tool Inventory
 
-<!-- Four lines per tool. This is worth 2 points and it's the single most
-     common place students lose them.
-
-     "Returns a list" earns NOTHING. The description has to say what is IN
-     the list.
-
-     The empty case isn't optional either — it's the thing your loop branches
-     on, and if you don't decide it here you'll discover it as a crash in
-     Milestone 5. -->
-
 ### `search_listings`
 
-- **What it does:**
-- **Inputs:** <!-- name and type each: `max_price` (float), not "a price" -->
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Searches the simulated store database and filters listings based on the parsed user criteria.
+- **Inputs:** `description` (str), `size` (str), `max_price` (float)
+- **Returns:** A list of dictionaries representing the matching listings (each containing fields like id, title, price, platform).
+- **When it has nothing:** An empty list `[]`.
 
 ### `suggest_outfit`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Takes a matched item and the user's wardrobe, and uses a model to suggest an outfit combination.
+- **Inputs:** `new_item` (dict), `wardrobe` (dict)
+- **Returns:** A string containing the outfit suggestion and styling advice.
+- **When it has nothing:** Returns general fashion advice on how to style the item rather than failing.
 
 ### `create_fit_card`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Generates a short, catchy social media-style caption for the complete outfit.
+- **Inputs:** `outfit` (str), `new_item` (dict)
+- **Returns:** A string containing the generated caption.
+- **When it has nothing:** A fallback error string if the model fails to generate a response.
 
 ---
 
 ## Planning Loop
 
-<!-- Your branch rule, stated as a rule — the condition AND both paths — plus
-     the file and function that holds it.
-
-     Like this:
-       "If search_listings returns an empty list, put a message in the session
-        and stop. Otherwise take the first result and go to suggest_outfit."
-        — agent.py::run_agent
-
-     The grader checks your code against what you claim here, so the file and
-     function have to be real. -->
-
-**Branch rule:**
+**Branch rule:** If `search_listings` returns an empty list, put a message in `session["error"]` naming what the user could change, and return the session without calling `suggest_outfit`. Otherwise, take the first result, put it in `session["selected_item"]`, and continue.
 
 **Where it lives:** `agent.py::run_agent`
 
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
+**How the query is parsed:** Regex (Regular Expressions).
 
-**What moves through the session:** <!-- which fields, in what order -->
-
+**What moves through the session:** `query`, `parsed`, `search_results`, `selected_item`, `wardrobe`, `outfit_suggestion`, `fit_card`, and `error`.
 ---
+
 
 ## Sample Run
 
