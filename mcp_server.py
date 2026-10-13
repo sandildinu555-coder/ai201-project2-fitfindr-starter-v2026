@@ -68,36 +68,21 @@ mcp = FastMCP("fitfindr", log_level="WARNING")
 
 
 # ── TODO: uncomment and fill this in ──────────────────────────────────────────
-#
-# @mcp.tool()
-# def search_listings(
-#     description: str,
-#     size: str | None = None,
-#     max_price: float | None = None,
-# ) -> list[dict]:
-#     """
-#     <-- YOUR DESCRIPTION GOES HERE.
-#
-#         One or two sentences. What does this tool do, what does it need, and
-#         what does it give back when it finds nothing? Written for a reader
-#         who cannot see the code.
-#     """
-#     return _search_listings_impl(description, size, max_price)
-#
+
+@mcp.tool()
+def search_listings(
+    description: str,
+    size: str | None = None,
+    max_price: float | None = None,
+) -> list[dict]:
+    """
+    Searches the store database for clothing listings matching the user's criteria.
+    Requires a description, and optionally accepts a size and a max_price in dollars.
+    Returns a list of matching listing dictionaries, or an empty list [] if nothing is found.
+    """
+    return _search_listings_impl(description, size, max_price)
+
 # ──────────────────────────────────────────────────────────────────────────────
-#
-# Two notes on the block above.
-#
-# The registered name is the *function* name — so the block above registers
-# "search_listings", which is exactly what call_tool("search_listings", ...)
-# asks for. That is also why the import at the top of this file brings the real
-# implementation in under an alias: without it, the registered function and the
-# one it calls would be the same name, and the tool would call itself.
-#
-# FastMCP builds the input schema from your type hints, which is why the hints
-# are not optional here. `description: str` becomes a required string;
-# `max_price: float | None = None` becomes an optional number. Getting these
-# wrong is the most common reason a call is rejected.
 
 
 if __name__ == "__main__":
