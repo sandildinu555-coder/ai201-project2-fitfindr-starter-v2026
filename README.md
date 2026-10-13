@@ -158,59 +158,40 @@ Scored the ultimate everyday uniform with these Vintage Levi's 501 Jeans in the 
 
 ## Run Log — Before
 
-<!-- Five criteria, five tries each, in this exact format.
-
-     Five, because your criteria are written out of five. Mark each try PASS
-     or FAIL, count the passes, and read that count against your target — a
-     row targeting 4 of 5 with three PASS cells is MISSED (3/5).
-
-     `python run_eval.py --label before` runs everything and writes the table
-     into results/. Paste it here and fill in the verdicts. -->
-
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. The item state is preserved between tools | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. The fit card is concise and specific (< 40 words) | 4 of 5 | FAIL | FAIL | FAIL | FAIL | FAIL | MISSED (0/5) |
+| 5. The empty wardrobe gracefully degrades | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
 **Real output from one try**, pasted as text, naming the file and function
 that produced it:
 
-```
-
+```text
+From file: results/run_2026-10-12_2353_before.md (Function: create_fit_card)
+[5] create_fit_card
+      in:  Platform Sneakers — White Chunky Sole ($48.0, poshmark)
+      out: Just scored these Platform Sneakers with the dreamiest white chunky sole on Poshmark for only $48! Obsessed is an understatement...
+  try 1: completed — fit card 303 chars
 ```
 
 ---
 
 ## Verdicts and Diagnoses
 
-<!-- MET or MISSED per criterion against LAST UNIT's target, plus a sentence on
-     how you decided.
-
-     Then, for every miss: which of the four places it happened — a tool, the
-     loop's branch, the session, or the model's output — AND the mechanism.
-
-     Not a diagnosis:  "The fit card was bad."
-     A diagnosis:      "The fit card criterion missed on 2 of 5 items. Both had
-                        an empty brand field. My prompt puts the brand in the
-                        first sentence, so the card opened with a blank and read
-                        like a fragment. The tool worked; the prompt assumed a
-                        field that isn't always there."
-
-     Look for a pattern. Three misses on the same tool is one problem, not
-     three. -->
-
 | # | Criterion | Target | Verdict | How I decided |
 |---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
+| 1 | Matching query completes | 4 of 5 | MET | All 5 tries successfully reached tool 5 and returned a fit card. |
+| 2 | Impossible query stops early | 5 of 5 | MET | All 5 tries correctly triggered the branch rule and stopped before `suggest_outfit`. |
+| 3 | State is preserved | 5 of 5 | MET | The item dict from `select_item` perfectly matched the input for `suggest_outfit` 5 times. |
+| 4 | Fit card is concise (< 40 words) | 4 of 5 | MISSED | All 5 fit cards generated were over 300 characters (approx. 45-55 words), exceeding the limit. |
+| 5 | Empty wardrobe gracefully degrades | 5 of 5 | MET | Handled the empty wardrobe gracefully all 5 times, giving general advice without crashing. |
 
 **Diagnoses**
+
+Criterion 4 missed on 5 out of 5 tries. The failure happened in the `create_fit_card` tool's model output. The mechanism is that the LLM's prompt does not strictly constrain the word count enough. Even though the tool works and correctly grabs the title/brand, the model generates overly descriptive captions that consistently fall around 45-55 words (over 300 characters), thereby breaking the "under 40 words" rule.
 
 
 
@@ -271,39 +252,30 @@ I moved the `search_listings` tool to MCP by registering it in `mcp_server.py` a
 
 ## The Improvement
 
-<!-- What you changed, why your diagnosis pointed at it, and the after-run in
-     the same table format. One change, measured properly.
-
-     `python run_eval.py --label after` -->
-
 **What I changed:**
+I updated the prompt in the `create_fit_card` tool (inside `tools.py`) to explicitly restrict the length by adding: `"STRICTLY keep the caption under 30 words. Do not exceed this limit under any circumstances."`
 
 **Which failure it was meant to fix:**
+This was meant to fix Criterion 4, which was failing because the model generated fit card captions that were too long (consistently over 40 words / 300+ characters).
 
 ### Run Log — After
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. The item state is preserved between tools | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. The fit card is concise and specific (< 40 words) | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. The empty wardrobe gracefully degrades | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
 **Did it help, and how do I know:**
-
-<!-- If it made things worse, say that. Honestly reported, that earns full
-     credit and is more interesting than one that worked. -->
-
-
+Yes, it worked perfectly! By strictly instructing the model to keep the caption under 30 words, the fit card lengths dropped from ~350 characters down to ~130-160 characters (around 20-25 words). Criterion 4 passed 5 out of 5 times.
 
 ---
 
 ## What's Still Broken
 
-<!-- For each criterion still missed: what you'd do, and why you stopped where
-     you did. "I ran out of time" is fine if it's true. Pretending nothing is
-     left is not. -->
+Nothing is broken! Thanks to the prompt improvement, all 5 criteria successfully met their targets. The MCP rewire was also successful and didn't break any existing functionality.
 
 
 

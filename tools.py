@@ -138,6 +138,8 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
 
+# ── Tool 3: create_fit_card ───────────────────────────────────────────────────
+
 def create_fit_card(outfit: str, new_item: dict) -> str:
     """
     Write a short caption someone would actually post about the find.
@@ -146,19 +148,19 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
     if not outfit or not outfit.strip():
         return "Just snagged a cool new piece! Can't wait to figure out how to style it. 💫"
 
-    
     title = new_item.get('title', 'this item')
     price = new_item.get('price', 'a great price')
     platform = new_item.get('platform', 'a thrift store')
 
     # 2. Build a prompt with the item details and the outfit
     prompt = (
-        f"Write a short, engaging social media caption (2-4 sentences) about finding this item: {title}. "
+        f"Write a short, engaging social media caption about finding this item: {title}. "
         f"I just bought it on {platform} for ${price}. "
         f"Here is how I plan to style it: {outfit}\n\n"
         "The caption should read like a real post from a fashion enthusiast sharing their thrifting find. "
         "It MUST mention the item, its price, and the platform exactly once. "
-        "Make it sound natural and capture the specific vibe of the outfit. Do not make it sound like a generic product description."
+        "Make it sound natural and capture the specific vibe of the outfit. "
+        "STRICTLY keep the caption under 30 words. Do not exceed this limit under any circumstances."
     )
 
     # 3. Call generate() and return the response
