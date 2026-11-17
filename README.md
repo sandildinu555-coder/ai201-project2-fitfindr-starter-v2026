@@ -316,3 +316,17 @@ Nothing is broken! Thanks to the prompt improvement, all 5 criteria successfully
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
+
+
+
+
+
+
+
+## Capstone
+
+**What This Extends**
+This project extends FitFindr (Units 3 & 4), an AI styling agent. What is new is a "Pre-flight Parameter Extraction & Validation" layer. Instead of hallucinating missing parameters or running expensive tool pipelines on vague inputs (which wastes API tokens), the agent now features a gatekeeper step. It parses the user's input for mandatory parameters (style/occasion, max price, and size). If any are missing, it explicitly halts the tool execution and asks the user clarifying follow-up questions, saving cost and preventing search failures.
+
+**The Shape**
+Shape B — Harden against failure (Input Validation and Cost Optimization). Out of scope for this unit: I am not adding a fourth styling tool to `tools.py`, I am not expanding the underlying clothing database, and I am not building a web UI.
