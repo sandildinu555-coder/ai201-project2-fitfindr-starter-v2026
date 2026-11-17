@@ -42,3 +42,31 @@ If a query matches an item but the user's wardrobe is completely empty, the `sug
 
 **Why this target:**
 New users won't have saved any items yet, so the application must handle this empty state gracefully and still provide value rather than breaking. 5 of 5 is the target because handling an empty dictionary is basic programmatic error handling.
+
+---
+
+<!-- ═══════════════════════ UNIT 9 — CAPSTONE ═══════════════════════ -->
+
+# Capstone Criteria
+
+## 1. Pre-flight gatekeeper blocks incomplete queries with zero LLM calls
+
+Given a query missing one or more mandatory parameters (clothing category/style, size, or price/price range), `validate_query` stops execution before `search_listings` and returns a clarification prompt with `0` model calls — in 3 of 3 tries.
+
+**Why this target:**
+3 of 3 is required because the gatekeeper is a deterministic rule-based check designed specifically to prevent wasted API tokens on vague requests.
+
+---
+
+## 2. Multi-category and price-range queries complete all tools
+
+Given a query containing multiple style/occasion categories and a price range (e.g., `"vintage y2k and graphic tee size M between $15 and $35"`), the agent parses `categories`, `min_price`, and `max_price`, finds a match, and completes all tools — in 3 of 3 tries.
+
+**Why this target:**
+Multi-category merging and numeric price-range filtering are deterministic extensions in `_search`, though LLM caption generation still runs at the end of the pipeline.
+
+---
+
+## 3. Brand filtering enforces named brands and silently defaults to `'any'`
+
+When a brand is specified (e.g., `"Levi's"`), `_search` returns only items matching that brand; when no brand is mentioned, `brands` defaults to `['any']` without asking the user a follow-up question about
