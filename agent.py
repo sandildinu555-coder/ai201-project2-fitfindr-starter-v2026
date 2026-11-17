@@ -1,9 +1,15 @@
+import json
+import os
 import re
+import time
+from datetime import datetime, timezone
 
 import config
 import trace
 from tools import search_listings, suggest_outfit, create_fit_card
 from generate import ModelUnavailable
+
+LOG_FILE = os.path.join("logs", "runs.jsonl")
 
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -25,23 +31,57 @@ def new_session(query: str, wardrobe: dict) -> dict:
     }
 
 
+def _log_run(session: dict, duration_ms: float, model_calls: int) -> None:
+    """
+    Write one structured JSONL record per run to logs/runs.jsonl.
+    """
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    parsed = session.get("parsed") or {}
+
+    if session.get("missing_fields"):
+        status = "blocked_missing_params"
+    elif session.get("error"):
+        status = "stopped_no_match_or_error"
+    else:
+        status = "success"
+
+    est_tokens = model_calls * 350
+    est_cost_usd = round(model_calls * 0.00007, 6)
+
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "query": session.get("query"),
+        "status": status,
+        "categories": parsed.get("categories", []),
+        "size": parsed.get("size"),
+        "min_price": parsed.get("min_price"),
+        "max_price": parsed.get("max_price"),
+        "brands": parsed.get("brands", ["any"]),
+        "matches_found": len(session.get("search_results") or []),
+        "selected_item": (session.get("selected_item") or {}).get("title"),
+        "model_calls": model_calls,
+        "estimated_tokens": est_tokens,
+        "estimated_cost_usd": est_cost_usd,
+        "duration_ms": round(duration_ms, 2),
+        "output_or_error": session.get("fit_card") or session.get("error"),
+    }
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+
 # ── parsing & validating the query ────────────────────────────────────────────
 
-_SIZE_WORDS = r"XXS|XS|S|M|L|XL|XXL|SMALL|MEDIUM|LARGE"
-_SIZE_MAP = {"SMALL": "S", "MEDIUM": "M", "LARGE": "L"}
+_SIZE_WORDS = r"XXS|XS|S|M|L|XL|XXL"
 
-# Price range (e.g., "$20 to $40", "$20-$40", "between $20 and $40")
 _PRICE_RANGE_RE = re.compile(
     r"(?:between\s*)?\$\s*(\d+(?:\.\d+)?)\s*(?:-|to|and)\s*\$?\s*(\d+(?:\.\d+)?)",
     re.I,
 )
-# Single max price (e.g., "under $30", "max $40", "$30")
 _PRICE_RE = re.compile(r"(?:under|below|less than|max|up to)?\s*\$\s*(\d+(?:\.\d+)?)", re.I)
 
 _SIZE_RE = re.compile(rf"\bsize\s+({_SIZE_WORDS}|US\s*\d+(?:\.\d+)?|W\d+)\b", re.I)
-_BARE_SIZE_RE = re.compile(rf"(?:,|\b)\s*({_SIZE_WORDS})\b", re.I)
+_BARE_SIZE_RE = re.compile(rf",\s*({_SIZE_WORDS})\s*$", re.I)
 
-# Known brands + explicit "brand: X" or "any brand" patterns
 _ANY_BRAND_RE = re.compile(r"\b(?:any\s+brand|no\s+brand)\b", re.I)
 _KNOWN_BRANDS = [
     "levi's", "levis", "levi", "louis vuitton", "adidas", "nike", "carhartt",
@@ -50,20 +90,15 @@ _KNOWN_BRANDS = [
     "brandy melville", "dickies", "vans", "new balance", "coach", "ralph lauren",
 ]
 
-# Stop words to strip when splitting a description into multiple style/occasion/item categories
 _STOP_WORDS = {
     "i", "want", "need", "looking", "for", "find", "me", "get", "a", "an", "the",
     "some", "outfit", "outfits", "clothes", "clothing", "good", "looking", "nice",
     "and", "or", "both", "in", "on", "with", "from", "by", "brand", "brands",
+    "under", "below", "between", "to", "max", "size",
 }
 
 
 def _extract_brands(text: str) -> tuple[list[str], str]:
-    """
-    Extract one or more brands from the query.
-    If none are mentioned (or user says 'any brand'), default to ['any'] without asking.
-    Returns (brands_list, cleaned_text).
-    """
     cleaned = text
     if _ANY_BRAND_RE.search(cleaned):
         cleaned = _ANY_BRAND_RE.sub(" ", cleaned)
@@ -85,22 +120,13 @@ def _extract_brands(text: str) -> tuple[list[str], str]:
 
 
 def _extract_categories(description: str) -> list[str]:
-    """
-    Break a cleaned description into distinct category/style/occasion keywords
-    so multi-category queries (e.g. 'classical summer and spring beach tee')
-    are tracked cleanly.
-    """
     tokens = re.findall(r"[a-zA-Z0-9]+", description.lower())
     return [t for t in tokens if t not in _STOP_WORDS]
 
 
 def parse_query(query: str) -> dict:
-    """
-    Pull description, categories, size, min/max price, and brands out of the query.
-    """
     text = query or ""
 
-    # 1. Price or Price Range
     min_price = None
     max_price = None
     range_match = _PRICE_RANGE_RE.search(text)
@@ -114,18 +140,14 @@ def parse_query(query: str) -> dict:
             max_price = float(price_match.group(1))
             text = text[: price_match.start()] + " " + text[price_match.end() :]
 
-    # 2. Size
     size = None
     size_match = _SIZE_RE.search(text) or _BARE_SIZE_RE.search(text)
     if size_match:
-        raw_size = re.sub(r"\s+", " ", size_match.group(1)).strip().upper()
-        size = _SIZE_MAP.get(raw_size, raw_size)
+        size = re.sub(r"\s+", " ", size_match.group(1)).strip().upper()
         text = text[: size_match.start()] + " " + text[size_match.end() :]
 
-    # 3. Brands (defaults to ["any"] if not mentioned)
     brands, text = _extract_brands(text)
 
-    # 4. Description & Multiple Categories
     description = re.sub(r"[,\s]+", " ", text).strip(" ,")
     categories = _extract_categories(description)
     cleaned_description = " ".join(categories) if categories else ""
@@ -141,13 +163,6 @@ def parse_query(query: str) -> dict:
 
 
 def validate_query(parsed: dict) -> list[str]:
-    """
-    Pre-flight gatekeeper: checks mandatory parameters before calling tools:
-      1. Clothing type / occasion / style categories (at least 1 required)
-      2. Size
-      3. Price or price range
-    Note: Brand is NEVER asked for if omitted; it automatically defaults to ['any'].
-    """
     missing = []
 
     if not parsed.get("categories"):
@@ -164,9 +179,6 @@ def validate_query(parsed: dict) -> list[str]:
 
 
 def _clarification_message(missing: list[str], parsed: dict) -> str:
-    """
-    Build a follow-up question asking only for the missing mandatory parameters.
-    """
     cats = parsed.get("categories") or []
     context = f" for {', '.join(cats)!r}" if cats else ""
     brand_info = (
@@ -183,9 +195,6 @@ def _clarification_message(missing: list[str], parsed: dict) -> str:
 # ── planning loop ─────────────────────────────────────────────────────────────
 
 def _call_search(desc: str, size: str | None, max_price: float | None) -> list[dict]:
-    """
-    Call search_listings over MCP with fallback to direct tool call.
-    """
     try:
         from mcp_client import call_tool
 
@@ -199,13 +208,8 @@ def _call_search(desc: str, size: str | None, max_price: float | None) -> list[d
 
 
 def _search(parsed: dict) -> list[dict]:
-    """
-    Execute search supporting multiple categories, price ranges, and strict brand filtering.
-    """
     results = _call_search(parsed["description"], parsed["size"], parsed["max_price"])
 
-    # If a multi-category query (e.g. "spring and summer tee") didn't match all words at once,
-    # search each category keyword individually and merge unique listings.
     categories = parsed.get("categories") or []
     if not results and len(categories) > 1:
         seen_ids = set()
@@ -218,12 +222,10 @@ def _search(parsed: dict) -> list[dict]:
                     merged.append(item)
         results = merged
 
-    # Filter by minimum price if user provided a price range (e.g. $20-$40)
     min_price = parsed.get("min_price")
     if min_price is not None:
         results = [item for item in results if (item.get("price") or 0) >= min_price]
 
-    # Strict brand filtering if user specified brand(s) other than "any"
     brands = parsed.get("brands") or ["any"]
     if brands != ["any"]:
         filtered_by_brand = []
@@ -239,11 +241,10 @@ def _search(parsed: dict) -> list[dict]:
 
 
 def run_agent(query: str, wardrobe: dict) -> dict:
-    """
-    Run the loop once and return the finished session.
-    """
     session = new_session(query, wardrobe)
     steps = 0
+    model_calls = 0
+    start_time = time.perf_counter()
 
     try:
         steps += 1
@@ -265,6 +266,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 returned=missing,
                 note=f"missing {len(missing)} mandatory field(s): stopping before search_listings",
             )
+            _log_run(session, (time.perf_counter() - start_time) * 1000, model_calls)
             return session
 
         trace.step(
@@ -292,6 +294,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 "branch",
                 note="search returned []: stopping before suggest_outfit",
             )
+            _log_run(session, (time.perf_counter() - start_time) * 1000, model_calls)
             return session
 
         steps += 1
@@ -301,6 +304,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
         steps += 1
         trace.check_iterations(steps)
+        model_calls += 1
         session["outfit_suggestion"] = suggest_outfit(
             session["selected_item"], session["wardrobe"]
         )
@@ -313,6 +317,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
         steps += 1
         trace.check_iterations(steps)
+        model_calls += 1
         session["fit_card"] = create_fit_card(
             session["outfit_suggestion"], session["selected_item"]
         )
@@ -332,13 +337,11 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         )
         trace.step("model unavailable", note="stopping, search results kept")
 
+    _log_run(session, (time.perf_counter() - start_time) * 1000, model_calls)
     return session
 
 
 def _nothing_found_message(parsed: dict) -> str:
-    """
-    What to say when the search comes back empty.
-    """
     tried = [f"description {parsed['description']!r}"]
     if parsed.get("brands") and parsed["brands"] != ["any"]:
         tried.append(f"brand(s) {', '.join(parsed['brands'])}")
@@ -388,11 +391,11 @@ if __name__ == "__main__":
 
     print("\n=== 2. Specific brand + price range query ===")
     _show(run_agent(
-        query="Levi's vintage jeans size M between $20 and $45",
+        query="Levi's vintage jeans size W28 between $20 and $45",
         wardrobe=get_example_wardrobe(),
     ))
 
-    print("\n=== 3. Incomplete multi-category query (Gatekeeper asks for size & price, NOT brand) ===")
+    print("\n=== 3. Incomplete multi-category query (Gatekeeper blocks & asks for size/price) ===")
     _show(run_agent(
         query="I want a classical summer and spring beach outfit",
         wardrobe=get_example_wardrobe(),
