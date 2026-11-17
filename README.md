@@ -325,8 +325,10 @@ Nothing is broken! Thanks to the prompt improvement, all 5 criteria successfully
 
 ## Capstone
 
+## Capstone
+
 **What This Extends**
-This project extends FitFindr (Units 3 & 4), an AI styling agent. What is new is a "Pre-flight Parameter Extraction & Validation" layer. Instead of hallucinating missing parameters or running expensive tool pipelines on vague inputs (which wastes API tokens), the agent now features a gatekeeper step. It parses the user's input for mandatory parameters (style/occasion, max price, and size). If any are missing, it explicitly halts the tool execution and asks the user clarifying follow-up questions, saving cost and preventing search failures.
+This project extends FitFindr (Units 3 & 4), an AI styling agent. What is new is a "Pre-flight Parameter Extraction, Multi-Category & Brand Filtering Gatekeeper" layer. Before triggering MCP searches or expensive LLM calls (`suggest_outfit` and `create_fit_card`), the agent scans the user's input for mandatory parameters: clothing type/occasion/style (supporting multiple categories such as "spring and summer" or "classical beach"), price or price range, and size. If any mandatory parameter is missing, the agent halts tool execution and asks a targeted clarifying question to save API tokens. It also extracts optional brand preferences (supporting single or multiple brands): if specific brands are named, results are strictly filtered to those brands; if no brand is mentioned, it silently defaults to `"any"` without asking redundant follow-up questions.
 
 **The Shape**
-Shape B — Harden against failure (Input Validation and Cost Optimization). Out of scope for this unit: I am not adding a fourth styling tool to `tools.py`, I am not expanding the underlying clothing database, and I am not building a web UI.
+Shape B — Harden against failure (Input Validation, Multi-Category/Brand Filtering, and Cost Optimization). Out of scope for this unit: I am not adding a fourth styling tool to `tools.py`, I am not expanding the underlying clothing database, and I am not building a web UI.
