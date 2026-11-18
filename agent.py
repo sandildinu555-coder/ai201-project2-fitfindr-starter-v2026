@@ -110,7 +110,15 @@ def _log_run(session: dict, duration_ms: float, model_calls: int) -> None:
 
 # ── parsing & validating the query ────────────────────────────────────────────
 
-_SIZE_WORDS = r"XXS|XS|S|M|L|XL|XXL"
+# Milestone 6 Improvement: added full-word sizes and normalization map
+_SIZE_WORDS = r"XXS|XS|S|M|L|XL|XXL|EXTRA\s+SMALL|EXTRA\s+LARGE|SMALL|MEDIUM|LARGE"
+_SIZE_MAP = {
+    "SMALL": "S",
+    "MEDIUM": "M",
+    "LARGE": "L",
+    "EXTRA SMALL": "XS",
+    "EXTRA LARGE": "XL",
+}
 
 # Supports "$20 to $45", "between $20 and $45", "between 20 and 45", "$20-$45"
 _PRICE_RANGE_RE = re.compile(
@@ -189,7 +197,8 @@ def parse_query(query: str) -> dict:
     size = None
     size_match = _SIZE_RE.search(text) or _BARE_SIZE_RE.search(text)
     if size_match:
-        size = re.sub(r"\s+", " ", size_match.group(1)).strip().upper()
+        raw_size = re.sub(r"\s+", " ", size_match.group(1)).strip().upper()
+        size = _SIZE_MAP.get(raw_size, raw_size)
         text = text[: size_match.start()] + " " + text[size_match.end() :]
 
     brands, text = _extract_brands(text)
