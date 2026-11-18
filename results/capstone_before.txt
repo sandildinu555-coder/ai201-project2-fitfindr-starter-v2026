@@ -1,0 +1,5 @@
+C1_gatekeeper: PASS, PASS, PASS
+C2_multi_cat_range: PASS, PASS, FAIL
+C3_brand_filter: PASS, PASS, PASS
+C4_full_word_size: FAIL, FAIL, FAIL
+C5_jsonl_logging: PASS, PASS, PASS

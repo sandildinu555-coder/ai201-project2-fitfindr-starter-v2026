@@ -31,6 +31,45 @@ def new_session(query: str, wardrobe: dict) -> dict:
     }
 
 
+def _recover_powershell_dollars(query: str) -> str:
+    r"""
+    When a user runs `python app.py ask "... $30 ..."` using double quotes in
+    Windows PowerShell, PowerShell strips `$30` as an unset variable before
+    passing arguments to Python. This function inspects the last line of
+    PowerShell's PSReadLine history and restores the stripped `$number` token
+    if and only if removing `$\d+` from the raw argument matches `query`.
+    """
+    if not query or "$" in query:
+        return query
+    try:
+        appdata = os.environ.get("APPDATA", "")
+        hist_path = os.path.join(
+            appdata,
+            "Microsoft",
+            "Windows",
+            "PowerShell",
+            "PSReadLine",
+            "ConsoleHost_history.txt",
+        )
+        if not os.path.exists(hist_path):
+            return query
+        with open(hist_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = [line.strip() for line in f if line.strip()]
+        if not lines:
+            return query
+        last_cmd = lines[-1]
+        candidates = re.findall(r'"([^"]+)"', last_cmd) + re.findall(r"'([^']+)'", last_cmd)
+        norm_query = re.sub(r"\s+", " ", query).strip()
+        for candidate in candidates:
+            if "$" in candidate:
+                stripped = re.sub(r"\$\d+(?:\.\d+)?", "", candidate)
+                if re.sub(r"\s+", " ", stripped).strip() == norm_query:
+                    return candidate
+    except Exception:  # noqa: BLE001
+        pass
+    return query
+
+
 def _log_run(session: dict, duration_ms: float, model_calls: int) -> None:
     """
     Write one structured JSONL record per run to logs/runs.jsonl.
@@ -73,11 +112,16 @@ def _log_run(session: dict, duration_ms: float, model_calls: int) -> None:
 
 _SIZE_WORDS = r"XXS|XS|S|M|L|XL|XXL"
 
+# Supports "$20 to $45", "between $20 and $45", "between 20 and 45", "$20-$45"
 _PRICE_RANGE_RE = re.compile(
-    r"(?:between\s*)?\$\s*(\d+(?:\.\d+)?)\s*(?:-|to|and)\s*\$?\s*(\d+(?:\.\d+)?)",
+    r"(?:between\s*\$?\s*(\d+(?:\.\d+)?)\s*(?:-|to|and)\s*\$?\s*(\d+(?:\.\d+)?)\s*(?:\$|dollars?|usd|bucks?)?|\$\s*(\d+(?:\.\d+)?)\s*(?:-|to|and)\s*\$?\s*(\d+(?:\.\d+)?))",
     re.I,
 )
-_PRICE_RE = re.compile(r"(?:under|below|less than|max|up to)?\s*\$\s*(\d+(?:\.\d+)?)", re.I)
+# Supports "under $30", "under 30", "$30", "30$", "30 dollars", "30 bucks"
+_PRICE_RE = re.compile(
+    r"(?:(?:under|below|less than|max|up to)\s*\$?\s*(\d+(?:\.\d+)?)\s*(?:\$|dollars?|usd|bucks?)?|\$\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:\$|dollars?|usd|bucks?))\b",
+    re.I,
+)
 
 _SIZE_RE = re.compile(rf"\bsize\s+({_SIZE_WORDS}|US\s*\d+(?:\.\d+)?|W\d+)\b", re.I)
 _BARE_SIZE_RE = re.compile(rf",\s*({_SIZE_WORDS})\s*$", re.I)
@@ -94,7 +138,7 @@ _STOP_WORDS = {
     "i", "want", "need", "looking", "for", "find", "me", "get", "a", "an", "the",
     "some", "outfit", "outfits", "clothes", "clothing", "good", "looking", "nice",
     "and", "or", "both", "in", "on", "with", "from", "by", "brand", "brands",
-    "under", "below", "between", "to", "max", "size",
+    "under", "below", "between", "to", "max", "size", "dollars", "dollar", "usd", "bucks",
 }
 
 
@@ -125,19 +169,21 @@ def _extract_categories(description: str) -> list[str]:
 
 
 def parse_query(query: str) -> dict:
-    text = query or ""
+    text = _recover_powershell_dollars(query or "")
 
     min_price = None
     max_price = None
     range_match = _PRICE_RANGE_RE.search(text)
     if range_match:
-        min_price = float(range_match.group(1))
-        max_price = float(range_match.group(2))
+        g1, g2, g3, g4 = range_match.groups()
+        min_price = float(g1 if g1 is not None else g3)
+        max_price = float(g2 if g2 is not None else g4)
         text = text[: range_match.start()] + " " + text[range_match.end() :]
     else:
         price_match = _PRICE_RE.search(text)
         if price_match:
-            max_price = float(price_match.group(1))
+            val = next(g for g in price_match.groups() if g is not None)
+            max_price = float(val)
             text = text[: price_match.start()] + " " + text[price_match.end() :]
 
     size = None
@@ -241,7 +287,8 @@ def _search(parsed: dict) -> list[dict]:
 
 
 def run_agent(query: str, wardrobe: dict) -> dict:
-    session = new_session(query, wardrobe)
+    recovered_query = _recover_powershell_dollars(query)
+    session = new_session(recovered_query, wardrobe)
     steps = 0
     model_calls = 0
     start_time = time.perf_counter()
@@ -249,9 +296,9 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     try:
         steps += 1
         trace.check_iterations(steps)
-        parsed = parse_query(query)
+        parsed = parse_query(recovered_query)
         session["parsed"] = parsed
-        trace.step("parse_query", inputs=query, returned=parsed)
+        trace.step("parse_query", inputs=recovered_query, returned=parsed)
 
         # ── PRE-FLIGHT GATEKEEPER (CAPSTONE EXTENSION) ────────────────────────
         steps += 1
