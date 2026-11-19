@@ -69,4 +69,4 @@ Multi-category merging and numeric price-range filtering are deterministic exten
 
 ## 3. Brand filtering enforces named brands and silently defaults to `'any'`
 
-When a brand is specified (e.g., `"Levi's"`), `_search` returns only items matching that brand; when no brand is mentioned, `brands` defaults to `['any']` without asking the user a follow-up question about
+When a brand is specified (e.g., `"Levi's"`), `_search` returns only items matching that brand; when no brand is mentioned, `brands` defaults to `['any']` without asking the user a follow-up question about~
